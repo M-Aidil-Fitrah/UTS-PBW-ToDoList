@@ -23,6 +23,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const fullName = localStorage.getItem('fullName');
     
     if (!token || !userId) {
+        console.error('Not authenticated, redirecting to login');
+        localStorage.clear(); // Clear potentially corrupted auth data
         window.location.href = 'index.html';
         return;
     }
@@ -36,23 +38,43 @@ document.addEventListener('DOMContentLoaded', function() {
     loadTasks();
 });
 
+// Handle authentication errors
+function handleAuthError(error) {
+    console.error('Authentication error:', error);
+    showAlert('Your session has expired. Please login again.', 'error');
+    
+    // Clear storage and redirect
+    setTimeout(() => {
+        localStorage.clear();
+        window.location.href = 'index.html';
+    }, 2000);
+}
+
 // Handle logout
 if (logoutBtn) {
     logoutBtn.addEventListener('click', async function() {
         const userId = localStorage.getItem('userId');
+        const token = localStorage.getItem('token');
+        
+        if (!userId || !token) {
+            localStorage.clear();
+            window.location.href = 'index.html';
+            return;
+        }
         
         try {
+            // Show loading
+            showAlert('Logging out...', 'info');
+            
             const response = await fetch(`${API_BASE_URL}/auth/logout/${userId}`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${token}`
                 }
             });
             
             // Clear local storage regardless of response
-            localStorage.removeItem('token');
-            localStorage.removeItem('userId');
-            localStorage.removeItem('fullName');
+            localStorage.clear();
             
             // Redirect to login page
             window.location.href = 'index.html';
@@ -61,9 +83,7 @@ if (logoutBtn) {
             console.error('Logout error:', error);
             
             // Still clear local storage and redirect even if there's an error
-            localStorage.removeItem('token');
-            localStorage.removeItem('userId');
-            localStorage.removeItem('fullName');
+            localStorage.clear();
             window.location.href = 'index.html';
         }
     });
@@ -74,12 +94,22 @@ async function loadTasks() {
     taskList.innerHTML = '<div class="flex justify-center items-center p-4"><p class="text-gray-500 italic">Loading tasks...</p></div>';
     
     try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            throw new Error('No authentication token found');
+        }
+        
         const response = await fetch(`${API_BASE_URL}/todo/getAllTodos`, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                'Authorization': `Bearer ${token}`
             }
         });
+        
+        if (response.status === 401 || response.status === 403) {
+            handleAuthError('Unauthorized access');
+            return;
+        }
         
         if (!response.ok) {
             throw new Error('Failed to load tasks');
@@ -90,7 +120,7 @@ async function loadTasks() {
         // Clear the loading message
         taskList.innerHTML = '';
         
-        if (data.todos.length === 0) {
+        if (!data.todos || data.todos.length === 0) {
             taskList.innerHTML = '<div class="flex justify-center items-center p-4"><p class="text-gray-500 italic">No tasks yet. Add one above!</p></div>';
             updateTaskCounters(0, 0);
             return;
@@ -116,8 +146,13 @@ async function loadTasks() {
         
     } catch (error) {
         console.error('Error loading tasks:', error);
-        taskList.innerHTML = '<div class="flex justify-center items-center p-4"><p class="text-red-500">Failed to load tasks. Please try again.</p></div>';
-        showAlert('Failed to load tasks. Please refresh the page.', 'error');
+        
+        if (error.message.includes('authentication') || error.message.includes('Unauthorized')) {
+            handleAuthError(error);
+        } else {
+            taskList.innerHTML = '<div class="flex justify-center items-center p-4"><p class="text-red-500">Failed to load tasks. Please try again.</p></div>';
+            showAlert('Failed to load tasks. Please refresh the page.', 'error');
+        }
     }
 }
 
@@ -170,59 +205,93 @@ function createTaskElement(todo) {
 
 // Update task counters
 function updateTaskCounters(pending, completed) {
-    pendingTasksCount.textContent = `${pending} task${pending !== 1 ? 's' : ''} pending`;
-    completedTasksCount.textContent = `${completed} task${completed !== 1 ? 's' : ''} completed`;
+    if (pendingTasksCount) {
+        pendingTasksCount.textContent = `${pending} task${pending !== 1 ? 's' : ''} pending`;
+    }
+    if (completedTasksCount) {
+        completedTasksCount.textContent = `${completed} task${completed !== 1 ? 's' : ''} completed`;
+    }
 }
 
 // Add a new task
-addTaskForm.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const taskText = newTaskInput.value.trim();
-    
-    if (!taskText) return;
-    
-    try {
-        const response = await fetch(`${API_BASE_URL}/todo/createTodo`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify({ text: taskText })
-        });
+if (addTaskForm) {
+    addTaskForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
         
-        if (!response.ok) {
-            throw new Error('Failed to add task');
+        const taskText = newTaskInput.value.trim();
+        
+        if (!taskText) return;
+        
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                throw new Error('No authentication token found');
+            }
+            
+            // Show loading
+            showAlert('Adding task...', 'info');
+            
+            const response = await fetch(`${API_BASE_URL}/todo/createTodo`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ text: taskText })
+            });
+            
+            if (response.status === 401 || response.status === 403) {
+                handleAuthError('Unauthorized access');
+                return;
+            }
+            
+            if (!response.ok) {
+                throw new Error('Failed to add task');
+            }
+            
+            // Clear input
+            newTaskInput.value = '';
+            
+            // Reload tasks to show the new one
+            loadTasks();
+            
+            showAlert('Task added successfully!', 'success');
+            
+        } catch (error) {
+            console.error('Error adding task:', error);
+            
+            if (error.message.includes('authentication') || error.message.includes('Unauthorized')) {
+                handleAuthError(error);
+            } else {
+                showAlert('Failed to add task. Please try again.', 'error');
+            }
         }
-        
-        // Clear input
-        newTaskInput.value = '';
-        
-        // Reload tasks to show the new one
-        loadTasks();
-        
-        showAlert('Task added successfully!', 'success');
-        
-    } catch (error) {
-        console.error('Error adding task:', error);
-        showAlert('Failed to add task. Please try again.', 'error');
-    }
-});
+    });
+}
 
 // Toggle task status (complete/incomplete)
 async function toggleTaskStatus(taskId, isCompleted) {
     try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            throw new Error('No authentication token found');
+        }
+        
         const response = await fetch(`${API_BASE_URL}/todo/updateTodo/${taskId}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ 
                 onCheckList: isCompleted 
             })
         });
+        
+        if (response.status === 401 || response.status === 403) {
+            handleAuthError('Unauthorized access');
+            return;
+        }
         
         if (!response.ok) {
             throw new Error('Failed to update task status');
@@ -245,9 +314,14 @@ async function toggleTaskStatus(taskId, isCompleted) {
         
     } catch (error) {
         console.error('Error updating task status:', error);
-        showAlert('Failed to update task status. Please try again.', 'error');
-        // Reset UI to previous state
-        loadTasks();
+        
+        if (error.message.includes('authentication') || error.message.includes('Unauthorized')) {
+            handleAuthError(error);
+        } else {
+            showAlert('Failed to update task status. Please try again.', 'error');
+            // Reset UI to previous state
+            loadTasks();
+        }
     }
 }
 
@@ -258,12 +332,22 @@ async function deleteTask(taskId) {
     }
     
     try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            throw new Error('No authentication token found');
+        }
+        
         const response = await fetch(`${API_BASE_URL}/todo/deleteTodo/${taskId}`, {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                'Authorization': `Bearer ${token}`
             }
         });
+        
+        if (response.status === 401 || response.status === 403) {
+            handleAuthError('Unauthorized access');
+            return;
+        }
         
         if (!response.ok) {
             throw new Error('Failed to delete task');
@@ -287,7 +371,12 @@ async function deleteTask(taskId) {
         
     } catch (error) {
         console.error('Error deleting task:', error);
-        showAlert('Failed to delete task. Please try again.', 'error');
+        
+        if (error.message.includes('authentication') || error.message.includes('Unauthorized')) {
+            handleAuthError(error);
+        } else {
+            showAlert('Failed to delete task. Please try again.', 'error');
+        }
     }
 }
 
@@ -307,60 +396,81 @@ function closeEditModal() {
 }
 
 // Cancel edit button
-cancelEditBtn.addEventListener('click', closeEditModal);
+if (cancelEditBtn) {
+    cancelEditBtn.addEventListener('click', closeEditModal);
+}
 
 // Close modal when clicking outside
-editModal.addEventListener('click', function(e) {
-    if (e.target === editModal) {
-        closeEditModal();
-    }
-});
+if (editModal) {
+    editModal.addEventListener('click', function(e) {
+        if (e.target === editModal) {
+            closeEditModal();
+        }
+    });
+}
 
 // Handle edit form submission
-editTaskForm.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const taskId = editTaskId.value;
-    const newText = editTaskText.value.trim();
-    
-    if (!newText) return;
-    
-    try {
-        // Find task to get current checkbox state
-        const taskElement = document.querySelector(`[data-id="${taskId}"]`);
-        const checkbox = taskElement.querySelector('input[type="checkbox"]');
-        const isChecked = checkbox.checked;
+if (editTaskForm) {
+    editTaskForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
         
-        const response = await fetch(`${API_BASE_URL}/todo/updateTodo/${taskId}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify({ 
-                text: newText,
-                onCheckList: isChecked 
-            })
-        });
+        const taskId = editTaskId.value;
+        const newText = editTaskText.value.trim();
         
-        if (!response.ok) {
-            throw new Error('Failed to update task');
+        if (!newText) return;
+        
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                throw new Error('No authentication token found');
+            }
+            
+            // Find task to get current checkbox state
+            const taskElement = document.querySelector(`[data-id="${taskId}"]`);
+            const checkbox = taskElement.querySelector('input[type="checkbox"]');
+            const isChecked = checkbox.checked;
+            
+            const response = await fetch(`${API_BASE_URL}/todo/updateTodo/${taskId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ 
+                    text: newText,
+                    onCheckList: isChecked 
+                })
+            });
+            
+            if (response.status === 401 || response.status === 403) {
+                handleAuthError('Unauthorized access');
+                return;
+            }
+            
+            if (!response.ok) {
+                throw new Error('Failed to update task');
+            }
+            
+            // Update task text in the UI
+            const taskText = taskElement.querySelector('span');
+            taskText.textContent = newText;
+            
+            // Close modal
+            closeEditModal();
+            
+            showAlert('Task updated successfully!', 'success');
+            
+        } catch (error) {
+            console.error('Error updating task:', error);
+            
+            if (error.message.includes('authentication') || error.message.includes('Unauthorized')) {
+                handleAuthError(error);
+            } else {
+                showAlert('Failed to update task. Please try again.', 'error');
+            }
         }
-        
-        // Update task text in the UI
-        const taskText = taskElement.querySelector('span');
-        taskText.textContent = newText;
-        
-        // Close modal
-        closeEditModal();
-        
-        showAlert('Task updated successfully!', 'success');
-        
-    } catch (error) {
-        console.error('Error updating task:', error);
-        showAlert('Failed to update task. Please try again.', 'error');
-    }
-});
+    });
+}
 
 // Show alert message
 function showAlert(message, type) {
@@ -368,19 +478,24 @@ function showAlert(message, type) {
     const alert = document.createElement('div');
     alert.className = `px-4 py-3 rounded-lg shadow-md transition-all ${
         type === 'success' ? 'bg-green-100 text-green-800 border-l-4 border-green-500' : 
+        type === 'info' ? 'bg-blue-100 text-blue-800 border-l-4 border-blue-500' :
         'bg-red-100 text-red-800 border-l-4 border-red-500'
     }`;
     alert.textContent = message;
     
     // Clear existing alerts
-    alertBox.innerHTML = '';
-    alertBox.appendChild(alert);
-    
-    // Show alert
-    alertBox.classList.remove('translate-x-full');
-    
-    // Hide alert after 3 seconds
-    setTimeout(() => {
-        alertBox.classList.add('translate-x-full');
-    }, 3000);
+    if (alertBox) {
+        alertBox.innerHTML = '';
+        alertBox.appendChild(alert);
+        
+        // Show alert
+        alertBox.classList.remove('translate-x-full');
+        
+        // Hide alert after 3 seconds (except for loading messages)
+        if (type !== 'info') {
+            setTimeout(() => {
+                alertBox.classList.add('translate-x-full');
+            }, 3000);
+        }
+    }
 }
