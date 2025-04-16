@@ -116,11 +116,14 @@ async function loadTasks() {
         }
         
         const data = await response.json();
+        // Tambahkan console.log di sini untuk memeriksa struktur data
+        console.log('Data yang diterima dari API:', JSON.stringify(data, null, 2));
         
         // Clear the loading message
         taskList.innerHTML = '';
         
-        if (!data.todos || data.todos.length === 0) {
+        // Periksa apakah data.data ada dan memiliki panjang
+        if (!data.data || data.data.length === 0) {
             taskList.innerHTML = '<div class="flex justify-center items-center p-4"><p class="text-gray-500 italic">No tasks yet. Add one above!</p></div>';
             updateTaskCounters(0, 0);
             return;
@@ -131,7 +134,7 @@ async function loadTasks() {
         let pendingCount = 0;
         
         // Display tasks
-        data.todos.forEach(todo => {
+        data.data.forEach(todo => {  // Ganti dari data.todos ke data.data
             if (todo.onCheckList) {
                 completedCount++;
             } else {
@@ -158,6 +161,7 @@ async function loadTasks() {
 
 // Create a task element
 function createTaskElement(todo) {
+    console.log('Membuat elemen untuk task:', todo);  // Cek data task yang diterima
     const taskItem = document.createElement('div');
     taskItem.className = 'flex items-center justify-between bg-gray-50 p-4 rounded-lg border border-gray-200';
     taskItem.dataset.id = todo._id;
@@ -252,9 +256,13 @@ if (addTaskForm) {
             // Clear input
             newTaskInput.value = '';
             
+            // Tampilkan data response
+            const result = await response.json();
+            console.log('Hasil tambah task:', result);
+
             // Reload tasks to show the new one
             loadTasks();
-            
+
             showAlert('Task added successfully!', 'success');
             
         } catch (error) {
@@ -287,6 +295,10 @@ async function toggleTaskStatus(taskId, isCompleted) {
                 onCheckList: isCompleted 
             })
         });
+
+        // Tambahkan ini setelah request:
+        const resData = await response.json();
+        console.log('Response dari updateTodo:', resData);
         
         if (response.status === 401 || response.status === 403) {
             handleAuthError('Unauthorized access');
@@ -457,7 +469,7 @@ if (editTaskForm) {
             
             // Close modal
             closeEditModal();
-            
+
             showAlert('Task updated successfully!', 'success');
             
         } catch (error) {
