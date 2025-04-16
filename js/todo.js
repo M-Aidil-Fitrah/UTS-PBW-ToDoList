@@ -1,6 +1,7 @@
 // API Base URL
 const API_BASE_URL = 'https://api-todo-list-pbw.vercel.app';
 
+
 // DOM Elements
 const addTaskForm = document.getElementById('addTaskForm');
 const newTaskInput = document.getElementById('newTask');
@@ -19,6 +20,11 @@ const alertBox = document.getElementById('alertBox');
 // Authentication Check
 document.addEventListener('DOMContentLoaded', function() {
     const token = localStorage.getItem('token');
+    console.log('Token used:', token); // ✅ tambahkan di sini
+if (!token) {
+    throw new Error('No authentication token found');
+}
+
     const userId = localStorage.getItem('userId');
     const fullName = localStorage.getItem('fullName');
     
@@ -278,7 +284,7 @@ if (addTaskForm) {
 }
 
 // Toggle task status (complete/incomplete)
-async function toggleTaskStatus(taskId, isCompleted) {
+async function toggleTaskStatus(taskId, isCompleted = true) {
     try {
         const token = localStorage.getItem('token');
         if (!token) {
@@ -428,53 +434,69 @@ if (editTaskForm) {
         
         const taskId = editTaskId.value;
         const newText = editTaskText.value.trim();
-        
-        if (!newText) return;
+
+        // Validasi text kosong
+        if (!newText) {
+            showAlert("Task text cannot be empty.", "error");
+            console.warn("⚠️ newText kosong!");
+            return;
+        }
         
         try {
             const token = localStorage.getItem('token');
             if (!token) {
                 throw new Error('No authentication token found');
             }
-            
-            // Find task to get current checkbox state
+
+            // Ambil status checkbox
             const taskElement = document.querySelector(`[data-id="${taskId}"]`);
             const checkbox = taskElement.querySelector('input[type="checkbox"]');
             const isChecked = checkbox.checked;
-            
+
+            // Log nilai akhir sebelum kirim
+            console.log("Final payload:", {
+                text: newText,
+                onCheckList: isChecked
+            });
+
             const response = await fetch(`${API_BASE_URL}/todo/updateTodo/${taskId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     text: newText,
-                    onCheckList: isChecked 
+                    onCheckList: true
                 })
             });
-            
+
+            // Cek otorisasi
             if (response.status === 401 || response.status === 403) {
                 handleAuthError('Unauthorized access');
                 return;
             }
-            
+
+            // Cek jika gagal
             if (!response.ok) {
-                throw new Error('Failed to update task');
+                const errorText = await response.text();
+                console.error('Failed response:', errorText);
+                throw new Error(`Failed to update task: ${errorText}`);
             }
-            
-            // Update task text in the UI
+
+            // Update UI
             const taskText = taskElement.querySelector('span');
             taskText.textContent = newText;
-            
-            // Close modal
+
+            // Tutup modal dan refresh task list
             closeEditModal();
+            loadTasks();
 
             showAlert('Task updated successfully!', 'success');
             
         } catch (error) {
             console.error('Error updating task:', error);
-            
+
             if (error.message.includes('authentication') || error.message.includes('Unauthorized')) {
                 handleAuthError(error);
             } else {
@@ -483,6 +505,7 @@ if (editTaskForm) {
         }
     });
 }
+
 
 // Show alert message
 function showAlert(message, type) {
