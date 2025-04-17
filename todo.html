@@ -53,12 +53,6 @@
                     </button>
                 </div>
             </form>
-
-            <!-- Task Counter -->
-            <div class="flex justify-between items-center mb-4 text-gray-600">
-                <span id="pendingTasks">0 tasks pending</span>
-                <span id="completedTasks">0 tasks completed</span>
-            </div>
             
             <!-- Task List -->
             <div id="taskList" class="space-y-3">
@@ -76,6 +70,7 @@
             <h3 class="text-lg font-medium mb-4">Edit Task</h3>
             <form id="editTaskForm">
                 <input type="hidden" id="editTaskId">
+                 <input type="hidden" id="editTaskStatus">
                 <div class="mb-4">
                     <input 
                         type="text" 
@@ -83,7 +78,7 @@
                         class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         required
                     >
-                </div>
+                </div>            
                 <div class="flex justify-end gap-2">
                     <button 
                         type="button" 
