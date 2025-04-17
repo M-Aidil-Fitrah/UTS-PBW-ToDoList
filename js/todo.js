@@ -176,17 +176,12 @@ function createTaskElement(todo) {
     const leftSide = document.createElement('div');
     leftSide.className = 'flex items-center';
     
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.className = 'w-5 h-5 text-indigo-600 mr-3 cursor-pointer';
-    checkbox.checked = todo.onCheckList;
-    checkbox.addEventListener('change', () => toggleTaskStatus(todo._id, checkbox.checked));
-    
     const taskText = document.createElement('span');
-    taskText.className = todo.onCheckList ? 'task-done' : '';
+    // taskText.className = todo.onCheckList ? 'task-done' : '';
+    taskText.className = '';
     taskText.textContent = todo.text;
     
-    leftSide.appendChild(checkbox);
+    // leftSide.appendChild(checkbox);
     leftSide.appendChild(taskText);
     
     // Right side with edit and delete buttons
@@ -229,7 +224,7 @@ if (addTaskForm) {
         e.preventDefault();
         
         const taskText = newTaskInput.value.trim();
-        
+
         if (!taskText) return;
         
         try {
@@ -281,66 +276,6 @@ if (addTaskForm) {
             }
         }
     });
-}
-
-// Toggle task status (complete/incomplete)
-async function toggleTaskStatus(taskId, isCompleted = true) {
-    try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            throw new Error('No authentication token found');
-        }
-        
-        const response = await fetch(`${API_BASE_URL}/todo/updateTodo/${taskId}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ 
-                onCheckList: isCompleted 
-            })
-        });
-
-        // Tambahkan ini setelah request:
-        const resData = await response.json();
-        console.log('Response dari updateTodo:', resData);
-        
-        if (response.status === 401 || response.status === 403) {
-            handleAuthError('Unauthorized access');
-            return;
-        }
-        
-        if (!response.ok) {
-            throw new Error('Failed to update task status');
-        }
-        
-        // Update UI
-        const taskItem = document.querySelector(`[data-id="${taskId}"]`);
-        const taskText = taskItem.querySelector('span');
-        
-        if (isCompleted) {
-            taskText.classList.add('task-done');
-        } else {
-            taskText.classList.remove('task-done');
-        }
-        
-        // Update counters
-        const completedTasks = document.querySelectorAll('input[type="checkbox"]:checked').length;
-        const totalTasks = document.querySelectorAll('[data-id]').length;
-        updateTaskCounters(totalTasks - completedTasks, completedTasks);
-        
-    } catch (error) {
-        console.error('Error updating task status:', error);
-        
-        if (error.message.includes('authentication') || error.message.includes('Unauthorized')) {
-            handleAuthError(error);
-        } else {
-            showAlert('Failed to update task status. Please try again.', 'error');
-            // Reset UI to previous state
-            loadTasks();
-        }
-    }
 }
 
 // Delete a task
@@ -402,6 +337,7 @@ async function deleteTask(taskId) {
 function openEditModal(todo) {
     editTaskId.value = todo._id;
     editTaskText.value = todo.text;
+    document.getElementById('editTaskStatus').value = todo.onCheckList; // Tambahkan ini
     editModal.classList.remove('hidden');
     editModal.classList.add('flex');
     editTaskText.focus();
@@ -434,6 +370,7 @@ if (editTaskForm) {
         
         const taskId = editTaskId.value;
         const newText = editTaskText.value.trim();
+        const onCheckList = document.getElementById('editTaskStatus').value === 'true';
 
         // Validasi text kosong
         if (!newText) {
@@ -448,15 +385,12 @@ if (editTaskForm) {
                 throw new Error('No authentication token found');
             }
 
-            // Ambil status checkbox
             const taskElement = document.querySelector(`[data-id="${taskId}"]`);
-            const checkbox = taskElement.querySelector('input[type="checkbox"]');
-            const isChecked = checkbox.checked;
 
             // Log nilai akhir sebelum kirim
             console.log("Final payload:", {
                 text: newText,
-                onCheckList: isChecked
+                onCheckList: true
             });
 
             const response = await fetch(`${API_BASE_URL}/todo/updateTodo/${taskId}`, {
@@ -487,6 +421,9 @@ if (editTaskForm) {
             // Update UI
             const taskText = taskElement.querySelector('span');
             taskText.textContent = newText;
+
+            // Hilangkan efek coret
+            taskElement.classList.remove('completed');
 
             // Tutup modal dan refresh task list
             closeEditModal();
